@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logo Bouncing Kuji</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&family=Inter:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            font-feature-settings: "liga" 1, "calt" 1;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .emoji {
+            font-family: 'Noto Color Emoji', sans-serif;
+            font-style: normal;
+        }
+
+        canvas {
+            background: #000;
+            /* closer to original screensaver */
+            display: block;
+        }
+
+        @keyframes celebration {
+            0% {
+                transform: scale(0) rotate(0deg);
+            }
+
+            50% {
+                transform: scale(1.2) rotate(180deg);
+            }
+
+            100% {
+                transform: scale(1) rotate(360deg);
+            }
+        }
+
+        .celebration {
+            animation: celebration 0.8s ease-out;
+        }
+
+        @keyframes confetti {
+            0% {
+                transform: translateY(-100vh) rotate(0deg);
+                opacity: 1;
+            }
+
+            100% {
+                transform: translateY(100vh) rotate(720deg);
+                opacity: 0;
+            }
+        }
+
+        .confetti {
+            animation: confetti 3s linear forwards;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-white">
+    <!-- Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Watch Mode Menu Button (visible in watch mode) -->
+    <button id="menuButton"
+        class="fixed top-4 left-4 z-50 px-3 py-2 bg-gray-800/80 border border-gray-600 rounded-lg text-sm hidden hover:bg-gray-700">
+        メニュー
+    </button>
+
+    <!-- Entry Modal -->
+    <div id="entryModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-xl p-8 max-w-md w-full mx-4">
+
+            <div class="flex gap-3 mb-4">
+                <input type="text" id="nameInput" placeholder="参加者名を入力..."
+                    class="flex-1 px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    maxlength="12">
+                <button id="addButton"
+                    class="px-6 py-2 bg-gradient-to-r from-green-500 to-teal-600 rounded-lg font-semibold hover:from-green-400 hover:to-teal-500 transition-all duration-200">
+                    追加
+                </button>
+                <button id="randomButton"
+                    class="px-4 py-2 bg-gradient-to-r from-indigo-500 to-blue-600 rounded-lg font-semibold hover:from-indigo-400 hover:to-blue-500 transition-all duration-200">
+                    🎲
+                </button>
+            </div>
+
+            <div class="mb-6">
+                <h3 id="participantsHeader" class="text-lg font-semibold mb-3">参加者 0名</h3>
+                <div id="participantsList" class="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
+                    <!-- Participants will be added here -->
+                </div>
+            </div>
+
+            <div class="flex gap-3 justify-center">
+                <button id="startButton"
+                    class="px-8 py-3 bg-gradient-to-r from-orange-500 to-red-600 rounded-lg font-bold text-lg hover:from-orange-400 hover:to-red-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed emoji"
+                    disabled>
+                    スタート
+                </button>
+                <button id="resetButton"
+                    class="px-6 py-3 bg-gray-600 rounded-lg font-semibold hover:bg-gray-500 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled>
+                    リセット
+                </button>
+                <button id="watchModeButton"
+                    class="px-6 py-3 bg-indigo-600 rounded-lg font-semibold hover:bg-indigo-500 transition-all duration-200">
+                    鑑賞
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Winner Modal -->
+    <div id="winnerModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white text-black rounded-xl p-8 text-center max-w-md mx-4 celebration">
+            <div class="text-6xl emoji mb-4">🎉</div>
+            <h2 class="text-3xl font-bold mb-2">おめでとう！</h2>
+            <div class="text-xl mb-6">
+                <span class="font-bold text-purple-600" id="winnerName"></span> の勝利！
+            </div>
+            <div class="flex gap-3 justify-center">
+                <button id="playAgainButton"
+                    class="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-lg font-bold hover:from-purple-400 hover:to-pink-500 transition-all duration-200">
+                    もう一度プレイ
+                </button>
+                <button id="newGameButton"
+                    class="px-6 py-3 bg-gray-600 text-white rounded-lg font-bold hover:bg-gray-500 transition-all duration-200">
+                    新しいゲーム
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confetti Container -->
+    <div id="confettiContainer" class="fixed inset-0 pointer-events-none z-40"></div>
+
+    <script>
+        // Game Configuration
+        const CONFIG = {
+            minRequiredBounces: 3,
+            missShrinkSteps: [
+                { minBounce: 4, missRatio: 0.50 },
+                { minBounce: 7, missRatio: 0.30 },
+                { minBounce: 10, missRatio: 0.00 }
+            ],
+            targetSlotWidth: 2,
+            totalSlotsPerEdge: 32,
+            baseSpeed: 220,
+            logoSize: { width: 120, height: 48 },
+            countdownSeconds: 3,
+            logoColors: ['#ff00ff', '#00ffff', '#ffff00', '#ff3300', '#00ff66', '#6699ff'],
+            // Logo content configuration (change texts/fonts here)
+            logoContent: {
+                mainText: 'freee',
+                subText: 'Developers Hub',
+                mainWeight: 900,
+                subWeight: 700,
+                mainFontFamily: "Arial Black, Arial, sans-serif",
+                subFontFamily: "Arial Black, Arial, sans-serif",
+                mainScale: 0.45, // relative to logo height
+                subScale: 0.18, // relative to logo height
+                mainOffsetY: 0.52, // relative to logo height
+                subOffsetY: 0.82  // relative to logo height
+            }
+        };
+
+        // Emoji and random name pools
+        const EMOJIS = ['😀', '😎', '🤖', '👑', '🦊', '🐼', '🐸', '🐯', '🐶', '🐱', '🐵', '🐨', '🐻', '🐮', '🐷', '🐔', '🐧', '🐤', '🐣', '🐙', '🐳', '🐬', '🐟', '🦄', '🚀', '🎲', '🎯', '🎉', '🍣', '🍔', '🍕', '⚽️', '🏀', '🎮', '🎧', '🧠', '💎', '🔥', '🌈', '⭐️'];
+        const RANDOM_NAMES = [
+            'Liam', 'Olivia', 'Noah', 'Emma', 'Oliver', 'Ava', 'Elijah', 'Sophia', 'William', 'Isabella',
+            'James', 'Mia', 'Benjamin', 'Charlotte', 'Lucas', 'Amelia', 'Henry', 'Harper', 'Alexander', 'Evelyn',
+            'Michael', 'Abigail', 'Daniel', 'Emily', 'Matthew', 'Elizabeth', 'Ethan', 'Avery', 'Joseph', 'Sofia',
+            'Samuel', 'Ella', 'David', 'Scarlett', 'Carter', 'Grace', 'Wyatt', 'Chloe', 'Jack', 'Victoria',
+            'Luke', 'Riley', 'Jayden', 'Aria', 'Dylan', 'Lily', 'Logan', 'Nora', 'Levi', 'Zoey',
+            'Owen', 'Mila', 'Hudson', 'Hannah', 'Caleb', 'Luna', 'Leo', 'Ellie', 'Isaac', 'Layla'
+        ];
+
+        // Game State
+        let gameState = {
+            entrants: [],
+            layout: { slotsBySide: { top: [], right: [], bottom: [], left: [] } },
+            bounceCount: 0,
+            phase: 'idle',
+            winnerId: null,
+            logo: {
+                x: 0, y: 0, w: CONFIG.logoSize.width, h: CONFIG.logoSize.height,
+                vx: 0, vy: 0
+            },
+            canvas: null,
+            ctx: null,
+            animationId: null,
+            lastFrameTime: 0,
+            logoColorIndex: 0,
+            placementOrder: null,
+            placementStartSideIndex: 0,
+            countdownActive: false,
+            countdownRemainingMs: 0
+        };
+
+        // DOM Elements
+        const nameInput = document.getElementById('nameInput');
+        const addButton = document.getElementById('addButton');
+        const startButton = document.getElementById('startButton');
+        const resetButton = document.getElementById('resetButton');
+        const randomButton = document.getElementById('randomButton');
+        const watchModeButton = document.getElementById('watchModeButton');
+        const menuButton = document.getElementById('menuButton');
+        const participantsList = document.getElementById('participantsList');
+        const participantsHeader = document.getElementById('participantsHeader');
+        const entryModal = document.getElementById('entryModal');
+        const winnerModal = document.getElementById('winnerModal');
+        const winnerName = document.getElementById('winnerName');
+        const playAgainButton = document.getElementById('playAgainButton');
+        const newGameButton = document.getElementById('newGameButton');
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // Initialize
+        gameState.canvas = canvas;
+        gameState.ctx = ctx;
+
+        // Setup fullscreen canvas
+        function setupCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            // Scale logo size to closer match original aspect
+            const minDim = Math.min(window.innerWidth, window.innerHeight);
+            const logoW = Math.max(100, Math.floor(minDim * 0.18));
+            const logoH = Math.floor(logoW * 0.4); // approx logo strip ratio
+            CONFIG.logoSize.width = logoW;
+            CONFIG.logoSize.height = logoH;
+            gameState.logo.w = logoW;
+            gameState.logo.h = logoH;
+
+            // Adjust total slots based on screen size (fewer slots for larger targets)
+            CONFIG.totalSlotsPerEdge = Math.floor(Math.max(window.innerWidth, window.innerHeight) / 30);
+
+            // Initialize logo position and gentle idle motion if not running
+            if (gameState.logo.vx === 0 && gameState.logo.vy === 0) {
+                centerLogo();
+                setRandomLogoVelocity(CONFIG.baseSpeed);
+            }
+            generateLayout();
+            render();
+        }
+
+        // Window resize handler
+        window.addEventListener('resize', setupCanvas);
+
+        // Initial setup
+        setupCanvas();
+        // Sync disabled states for empty participants
+        updateParticipantsList();
+
+        // Utility Functions
+        function generateId() {
+            return Math.random().toString(36).substr(2, 9);
+        }
+
+        function getRandomAngle() {
+            // Avoid angles too close to horizontal/vertical to prevent endless bouncing patterns
+            const minComponentRatio = 0.28; // >= ~16° away from axes
+            let angleRad = 0;
+            for (let i = 0; i < 1000; i++) {
+                angleRad = Math.random() * Math.PI * 2;
+                const cosA = Math.cos(angleRad);
+                const sinA = Math.sin(angleRad);
+                if (Math.abs(cosA) >= minComponentRatio && Math.abs(sinA) >= minComponentRatio) {
+                    break;
+                }
+            }
+            return angleRad;
+        }
+
+        function centerLogo() {
+            gameState.logo.x = canvas.width / 2 - gameState.logo.w / 2;
+            gameState.logo.y = canvas.height / 2 - gameState.logo.h / 2;
+        }
+
+        function setRandomLogoVelocity(speed) {
+            const minComponent = speed * 0.28;
+            for (let i = 0; i < 1000; i++) {
+                const angle = getRandomAngle();
+                const vx = Math.cos(angle) * speed;
+                const vy = Math.sin(angle) * speed;
+                if (Math.abs(vx) >= minComponent && Math.abs(vy) >= minComponent) {
+                    gameState.logo.vx = vx;
+                    gameState.logo.vy = vy;
+                    return;
+                }
+            }
+        }
+
+        function getCurrentMissRatio() {
+            const steps = CONFIG.missShrinkSteps;
+            let ratio = 1.0;
+            for (const step of steps) {
+                if (gameState.bounceCount >= step.minBounce) {
+                    ratio = step.missRatio;
+                }
+            }
+            return ratio;
+        }
+
+        function isCountdownActive() {
+            return gameState.countdownActive && gameState.countdownRemainingMs > 0;
+        }
+
+        // Slot Layout Generation
+        function generateLayout() {
+            if (gameState.phase === 'watch') {
+                gameState.layout = { slotsBySide: { top: [], right: [], bottom: [], left: [] } };
+                return;
+            }
+            const entrants = gameState.entrants;
+            const N = CONFIG.totalSlotsPerEdge;
+            const T = CONFIG.targetSlotWidth;
+            const P = entrants.length;
+
+            if (P === 0) {
+                gameState.layout = { slotsBySide: { top: [], right: [], bottom: [], left: [] } };
+                return;
+            }
+
+            const totalTargetSlots = P * T;
+            const totalMissSlots = Math.max(0, N - totalTargetSlots);
+            const currentMissRatio = getCurrentMissRatio();
+            const activeMissSlots = Math.round(totalMissSlots * currentMissRatio);
+
+            const sides = ['top', 'right', 'bottom', 'left'];
+            const layout = { slotsBySide: { top: [], right: [], bottom: [], left: [] } };
+
+            // Randomize placement order once per running round, otherwise keep idle hidden
+            let order = gameState.placementOrder;
+            if (!order || gameState.phase !== 'running') {
+                // In idle phase, do not reveal target layout
+                if (gameState.phase === 'idle') {
+                    gameState.layout = { slotsBySide: { top: [], right: [], bottom: [], left: [] } };
+                    return;
+                }
+                order = [...entrants].map((e, i) => i);
+                // Fisher-Yates shuffle
+                for (let i = order.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [order[i], order[j]] = [order[j], order[i]];
+                }
+                gameState.placementOrder = order;
+                gameState.placementStartSideIndex = Math.floor(Math.random() * 4);
+            }
+
+            // Round-robin across sides starting at a random side
+            let participantIndex = 0;
+            const sideTargetCounts = { top: 0, right: 0, bottom: 0, left: 0 };
+            while (participantIndex < P) {
+                const side = sides[(gameState.placementStartSideIndex + participantIndex) % 4];
+                sideTargetCounts[side]++;
+                participantIndex++;
+            }
+
+            for (let sideIndex = 0; sideIndex < 4; sideIndex++) {
+                const side = sides[sideIndex];
+                const sideParticipants = sideTargetCounts[side];
+                const sideMissSlots = Math.floor(activeMissSlots / 4) + (sideIndex < activeMissSlots % 4 ? 1 : 0);
+
+                const slots = [];
+                let position = 0;
+                const totalSideSlots = Math.max(1, sideParticipants * T + sideMissSlots);
+                const pxPerSlot = (side === 'left' || side === 'right')
+                    ? (canvas.height / totalSideSlots)
+                    : (canvas.width / totalSideSlots);
+
+                // Distribute miss slots and targets
+                const gaps = sideParticipants + 1;
+                const baseMiss = Math.floor(sideMissSlots / gaps);
+                const extraMiss = sideMissSlots % gaps;
+
+                let pickIndex = 0;
+                for (let i = 0; i < sideParticipants; i++) {
+                    // Miss slots before target i
+                    const missBeforeTarget = baseMiss + (i < extraMiss ? 1 : 0);
+                    for (let j = 0; j < missBeforeTarget; j++) {
+                        slots.push({
+                            side,
+                            index: slots.length,
+                            type: 'miss',
+                            pxStart: position * pxPerSlot,
+                            pxEnd: (position + 1) * pxPerSlot
+                        });
+                        position++;
+                    }
+
+                    // Add target slots for this entrant
+                    const entrant = entrants[order[(sideIndex + pickIndex) % order.length]];
+                    pickIndex++;
+                    for (let j = 0; j < T; j++) {
+                        slots.push({
+                            side,
+                            index: slots.length,
+                            type: 'target',
+                            entrantId: entrant.id,
+                            entrantName: j === 0 ? entrant.name : null, // Only show name on first slot
+                            entrantEmoji: j === 0 ? (entrant.emoji || '🙂') : null,
+                            entrantColor: entrant.color,
+                            pxStart: position * pxPerSlot,
+                            pxEnd: (position + 1) * pxPerSlot
+                        });
+                        position++;
+                    }
+                }
+
+                // Trailing miss slots after last target
+                const trailingMiss = baseMiss + (sideParticipants < extraMiss ? 1 : 0);
+                for (let j = 0; j < trailingMiss; j++) {
+                    if (position >= totalSideSlots) break;
+                    slots.push({
+                        side,
+                        index: slots.length,
+                        type: 'miss',
+                        pxStart: position * pxPerSlot,
+                        pxEnd: (position + 1) * pxPerSlot
+                    });
+                    position++;
+                }
+
+                layout.slotsBySide[side] = slots;
+            }
+
+            gameState.layout = layout;
+        }
+
+        // Collision Detection
+        function resolveSlot(side, hitCoordPx) {
+            const slots = gameState.layout.slotsBySide[side];
+            for (const slot of slots) {
+                if (hitCoordPx >= slot.pxStart && hitCoordPx < slot.pxEnd) {
+                    return slot;
+                }
+            }
+            return null;
+        }
+
+        function checkWallCollision() {
+            const logo = gameState.logo;
+            let bounced = false;
+            let hitSide = null;
+            let hitCoord = 0;
+
+            // Left/Right walls
+            if (logo.x <= 0 || logo.x + logo.w >= canvas.width) {
+                logo.vx = -logo.vx;
+                logo.x = logo.x <= 0 ? 0 : canvas.width - logo.w;
+                bounced = true;
+                hitSide = logo.x <= 0 ? 'left' : 'right';
+                hitCoord = logo.y + logo.h / 2; // vertical coordinate in px
+            }
+
+            // Top/Bottom walls
+            if (logo.y <= 0 || logo.y + logo.h >= canvas.height) {
+                logo.vy = -logo.vy;
+                logo.y = logo.y <= 0 ? 0 : canvas.height - logo.h;
+                bounced = true;
+                hitSide = logo.y <= 0 ? 'top' : 'bottom';
+                hitCoord = logo.x + logo.w / 2; // horizontal coordinate in px
+            }
+
+            if (bounced) {
+                // Cycle color on every wall hit (classic behavior)
+                gameState.logoColorIndex = (gameState.logoColorIndex + 1) % CONFIG.logoColors.length;
+
+                if (gameState.phase === 'running' && !isCountdownActive()) {
+                    gameState.bounceCount++;
+                    let didWin = false;
+
+                    // Time-based countdown replaced bounce gating; allow win immediately after countdown
+                    const slot = resolveSlot(hitSide, hitCoord);
+                    if (slot && slot.type === 'target') {
+                        didWin = true;
+                        gameState.winnerId = slot.entrantId;
+                        gameState.phase = 'finished';
+                        const entrantObj = gameState.entrants.find(e => e.id === slot.entrantId);
+                        const displayName = entrantObj?.name || slot.entrantName || '';
+                        showWinner(displayName);
+                    }
+
+                    // Update layout only if game continues
+                    if (!didWin) {
+                        generateLayout();
+                    }
+                }
+            }
+        }
+
+        // Rendering
+        function drawSlots() {
+            if (gameState.phase === 'watch') return;
+            const ctx = gameState.ctx;
+            const slotThickness = Math.max(24, Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.02));
+            const hideTargets = (gameState.phase === 'idle') || isCountdownActive();
+
+            Object.entries(gameState.layout.slotsBySide).forEach(([side, slots]) => {
+                // First draw miss slots as background
+                for (let i = 0; i < slots.length; i++) {
+                    const slot = slots[i];
+                    if (slot.type !== 'miss') continue;
+                    ctx.fillStyle = '#111';
+                    ctx.globalAlpha = 0.25;
+                    let x, y, width, height;
+                    switch (side) {
+                        case 'top':
+                            x = slot.pxStart; y = 0; width = slot.pxEnd - slot.pxStart; height = slotThickness; break;
+                        case 'bottom':
+                            x = slot.pxStart; y = canvas.height - slotThickness; width = slot.pxEnd - slot.pxStart; height = slotThickness; break;
+                        case 'left':
+                            x = 0; y = slot.pxStart; width = slotThickness; height = slot.pxEnd - slot.pxStart; break;
+                        case 'right':
+                            x = canvas.width - slotThickness; y = slot.pxStart; width = slotThickness; height = slot.pxEnd - slot.pxStart; break;
+                    }
+                    ctx.fillRect(x, y, width, height);
+                    ctx.globalAlpha = 1;
+                }
+
+                // Then merge contiguous target slots per entrant and draw as single block
+                if (!hideTargets) {
+                    for (let i = 0; i < slots.length; i++) {
+                        const start = slots[i];
+                        if (start.type !== 'target') continue;
+                        const entrantId = start.entrantId;
+                        let endIndex = i;
+                        while (
+                            endIndex + 1 < slots.length &&
+                            slots[endIndex + 1].type === 'target' &&
+                            slots[endIndex + 1].entrantId === entrantId
+                        ) {
+                            endIndex++;
+                        }
+                        const end = slots[endIndex];
+
+                        // Compute merged rectangle
+                        let x, y, width, height, centerX, centerY;
+                        switch (side) {
+                            case 'top':
+                                x = start.pxStart; y = 0; width = end.pxEnd - start.pxStart; height = slotThickness; break;
+                            case 'bottom':
+                                x = start.pxStart; y = canvas.height - slotThickness; width = end.pxEnd - start.pxStart; height = slotThickness; break;
+                            case 'left':
+                                x = 0; y = start.pxStart; width = slotThickness; height = end.pxEnd - start.pxStart; break;
+                            case 'right':
+                                x = canvas.width - slotThickness; y = start.pxStart; width = slotThickness; height = end.pxEnd - start.pxStart; break;
+                        }
+                        centerX = x + width / 2;
+                        centerY = y + height / 2;
+
+                        // Fill with glow
+                        const color = start.entrantColor || '#ff3366';
+                        ctx.save();
+                        ctx.shadowColor = color;
+                        ctx.shadowBlur = Math.max(6, Math.floor(slotThickness * 0.8));
+                        ctx.fillStyle = color;
+                        ctx.fillRect(x, y, width, height);
+                        ctx.restore();
+
+                        // Single border around merged target area
+                        ctx.lineWidth = Math.max(1, Math.floor(slotThickness * 0.12));
+                        ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+                        ctx.strokeRect(Math.round(x) + 0.5, Math.round(y) + 0.5, Math.round(width) - 1, Math.round(height) - 1);
+
+                        // Label centered on merged area
+                        if (start.entrantName) {
+                            const label = `${start.entrantEmoji || ''} ${start.entrantName}`.trim();
+                            const fontSize = Math.max(12, Math.floor(slotThickness * 0.6));
+                            ctx.font = `900 ${fontSize}px Inter, 'Apple Color Emoji', 'Noto Color Emoji', Arial, sans-serif`;
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.lineWidth = Math.max(2, Math.floor(fontSize * 0.12));
+                            ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+                            if (side === 'top' || side === 'bottom') {
+                                ctx.strokeText(label, centerX, centerY);
+                                ctx.fillStyle = 'white';
+                                ctx.fillText(label, centerX, centerY);
+                            } else {
+                                ctx.save();
+                                ctx.translate(centerX, centerY);
+                                ctx.rotate(Math.PI / 2);
+                                ctx.strokeText(label, 0, 0);
+                                ctx.fillStyle = 'white';
+                                ctx.fillText(label, 0, 0);
+                                ctx.restore();
+                            }
+                        }
+
+                        // Skip processed slots
+                        i = endIndex;
+                    }
+                }
+            });
+        }
+
+        function drawCountdown() {
+            if (gameState.phase !== 'running') return;
+            if (!isCountdownActive()) return;
+            const secondsLeft = Math.ceil(gameState.countdownRemainingMs / 1000);
+            const display = Math.max(0, secondsLeft);
+            const ctx = gameState.ctx;
+            const minDim = Math.min(canvas.width, canvas.height);
+            const fontSize = Math.max(48, Math.floor(minDim * 0.18));
+            ctx.save();
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `900 ${fontSize}px Inter, Arial Black, sans-serif`;
+            ctx.lineWidth = Math.max(6, Math.floor(fontSize * 0.12));
+            ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+            ctx.strokeText(String(display), canvas.width / 2, canvas.height / 2);
+            ctx.fillStyle = 'white';
+            ctx.fillText(String(display), canvas.width / 2, canvas.height / 2);
+            ctx.restore();
+        }
+
+        function drawLogo() {
+            const ctx = gameState.ctx;
+            const logo = gameState.logo;
+            const color = CONFIG.logoColors[gameState.logoColorIndex];
+
+            // Rounded rectangle background
+            const radius = Math.max(8, logo.h * 0.18);
+            ctx.fillStyle = color;
+            roundRect(ctx, logo.x, logo.y, logo.w, logo.h, radius, true, false);
+
+            // White outline
+            ctx.lineWidth = Math.max(2, Math.floor(logo.h * 0.08));
+            ctx.strokeStyle = 'white';
+            roundRect(ctx, logo.x, logo.y, logo.w, logo.h, radius, false, true);
+
+            ctx.fillStyle = 'white';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const contentCfg = CONFIG.logoContent || {};
+            const mainText = (contentCfg.mainText ?? 'freee');
+            const subText = (contentCfg.subText ?? 'Developer Blog');
+            const mainWeight = (contentCfg.mainWeight ?? 900);
+            const subWeight = (contentCfg.subWeight ?? 700);
+            const mainFontFamily = (contentCfg.mainFontFamily ?? "Arial Black, Arial, sans-serif");
+            const subFontFamily = (contentCfg.subFontFamily ?? "Arial Black, Arial, sans-serif");
+            const mainScale = (contentCfg.mainScale ?? 0.45);
+            const subScale = (contentCfg.subScale ?? 0.18);
+            const mainOffsetY = (contentCfg.mainOffsetY ?? 0.52);
+            const subOffsetY = (contentCfg.subOffsetY ?? 0.82);
+
+            const mainFontSize = Math.max(14, Math.floor(logo.h * mainScale));
+            ctx.font = `${mainWeight} ${mainFontSize}px ${mainFontFamily}`;
+            ctx.fillText(mainText, logo.x + logo.w / 2, logo.y + logo.h * mainOffsetY);
+
+            // Subtext
+            const subFontSize = Math.max(10, Math.floor(logo.h * subScale));
+            ctx.font = `${subWeight} ${subFontSize}px ${subFontFamily}`;
+            ctx.fillText(subText, logo.x + logo.w / 2, logo.y + logo.h * subOffsetY);
+        }
+
+        function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+            let r = radius;
+            if (typeof r === 'number') {
+                r = { tl: radius, tr: radius, br: radius, bl: radius };
+            }
+            ctx.beginPath();
+            ctx.moveTo(x + r.tl, y);
+            ctx.lineTo(x + width - r.tr, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + r.tr);
+            ctx.lineTo(x + width, y + height - r.br);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - r.br, y + height);
+            ctx.lineTo(x + r.bl, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - r.bl);
+            ctx.lineTo(x, y + r.tl);
+            ctx.quadraticCurveTo(x, y, x + r.tl, y);
+            ctx.closePath();
+            if (fill) ctx.fill();
+            if (stroke) ctx.stroke();
+        }
+
+        function render() {
+            const ctx = gameState.ctx;
+
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw slots
+            drawSlots();
+
+            // Draw logo always (keeps bouncing behind modals)
+            drawLogo();
+
+            // Draw initial bounce countdown overlay
+            drawCountdown();
+        }
+
+        // Game Loop
+        function gameLoop(timestamp) {
+            // Compute delta time
+            const now = timestamp || performance.now();
+            const last = gameState.lastFrameTime || now;
+            let dt = (now - last) / 1000;
+            // Clamp dt to avoid huge jumps on tab switch
+            dt = Math.max(0, Math.min(dt, 1 / 20));
+            gameState.lastFrameTime = now;
+            const logo = gameState.logo;
+
+            // Update position
+            logo.x += logo.vx * dt;
+            logo.y += logo.vy * dt;
+
+            // Countdown time update
+            if (gameState.countdownActive) {
+                gameState.countdownRemainingMs = Math.max(0, gameState.countdownRemainingMs - (dt * 1000));
+                if (gameState.countdownRemainingMs === 0) {
+                    gameState.countdownActive = false;
+                }
+            }
+
+            // Check collisions
+            checkWallCollision();
+
+            // Render
+            render();
+
+            gameState.animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // Event Handlers
+        function addParticipant() {
+            const name = nameInput.value.trim();
+            if (name && !gameState.entrants.find(e => e.name === name)) {
+                const entrant = {
+                    id: generateId(),
+                    name: name,
+                    color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+                    emoji: EMOJIS[Math.floor(Math.random() * EMOJIS.length)]
+                };
+
+                gameState.entrants.push(entrant);
+                updateParticipantsList();
+                nameInput.value = '';
+                generateLayout();
+                render();
+            }
+        }
+
+        function addRandomParticipants(count = 5) {
+            const usedNames = new Set(gameState.entrants.map(e => e.name));
+            for (let i = 0; i < count; i++) {
+                let base = RANDOM_NAMES[Math.floor(Math.random() * RANDOM_NAMES.length)];
+                let name = base;
+                let tries = 0;
+                while (usedNames.has(name) && tries < 100) {
+                    name = base + Math.floor(Math.random() * 100);
+                    tries++;
+                }
+                usedNames.add(name);
+                const entrant = {
+                    id: generateId(),
+                    name,
+                    color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+                    emoji: EMOJIS[Math.floor(Math.random() * EMOJIS.length)]
+                };
+                gameState.entrants.push(entrant);
+            }
+            updateParticipantsList();
+            generateLayout();
+            render();
+        }
+
+        function removeParticipant(id) {
+            gameState.entrants = gameState.entrants.filter(e => e.id !== id);
+            updateParticipantsList();
+            generateLayout();
+            render();
+        }
+
+        function updateParticipantsList() {
+            if (participantsHeader) {
+                participantsHeader.textContent = `参加者 ${gameState.entrants.length}名`;
+            }
+            startButton.disabled = gameState.entrants.length === 0;
+            if (resetButton) {
+                resetButton.disabled = gameState.entrants.length === 0;
+            }
+
+            participantsList.innerHTML = gameState.entrants.map(entrant =>
+                `<div class="flex items-center gap-2 bg-gray-700 px-3 py-2 rounded-lg">
+                    <div class="w-3 h-3 rounded-full" style="background-color: ${entrant.color}"></div>
+                    <span class="text-lg emoji">${entrant.emoji || '🙂'}</span>
+                    <span class="text-sm font-medium">${entrant.name}</span>
+                    <button onclick="removeParticipant('${entrant.id}')" class="text-red-400 hover:text-red-300 ml-2 text-xs">✕</button>
+                </div>`
+            ).join('');
+        }
+
+        function startGame() {
+            if (gameState.entrants.length === 0) return;
+
+            // Hide entry modal
+            entryModal.classList.add('hidden');
+
+            gameState.phase = 'running';
+            gameState.bounceCount = 0;
+            gameState.winnerId = null;
+            gameState.placementOrder = null; // re-shuffle on each start
+            // Start time-based countdown; hide targets during countdown
+            gameState.countdownActive = true;
+            gameState.countdownRemainingMs = CONFIG.countdownSeconds * 1000;
+
+            // Reset logo position and velocity
+            centerLogo();
+            setRandomLogoVelocity(CONFIG.baseSpeed);
+
+            generateLayout(); // layout exists but targets hidden until countdown ends
+
+            startAnimationLoop();
+        }
+
+        function resetGame() {
+            // Clear participants instead of resetting logo position
+            gameState.entrants = [];
+            gameState.phase = 'idle';
+            gameState.bounceCount = 0;
+            gameState.winnerId = null;
+            gameState.placementOrder = null;
+            gameState.countdownActive = false;
+            gameState.countdownRemainingMs = 0;
+
+            updateParticipantsList();
+            generateLayout();
+            render();
+            hideWinner();
+
+            // Show entry modal; keep current logo motion as-is
+            entryModal.classList.remove('hidden');
+            startAnimationLoop();
+        }
+
+        function startWatchMode() {
+            // Enter watch-only mode (no targets, no winners)
+            entryModal.classList.add('hidden');
+            hideWinner();
+            gameState.phase = 'watch';
+            gameState.bounceCount = 0;
+            gameState.winnerId = null;
+            gameState.placementOrder = null;
+            gameState.countdownActive = false;
+            gameState.countdownRemainingMs = 0;
+
+            // Clear any layout/targets
+            gameState.layout = { slotsBySide: { top: [], right: [], bottom: [], left: [] } };
+
+            // Reset logo and keep bouncing
+            centerLogo();
+            setRandomLogoVelocity(CONFIG.baseSpeed);
+
+            // Show small menu button to return
+            if (menuButton) menuButton.classList.remove('hidden');
+
+            startAnimationLoop();
+        }
+
+        function exitWatchMode() {
+            // Return to idle/menu
+            if (menuButton) menuButton.classList.add('hidden');
+            resetGame();
+        }
+
+
+        function showWinner(name) {
+            winnerName.textContent = name;
+            winnerModal.classList.remove('hidden');
+
+            createConfetti();
+        }
+
+        function hideWinner() {
+            winnerModal.classList.add('hidden');
+            clearConfetti();
+        }
+
+        function createConfetti() {
+            const container = document.getElementById('confettiContainer');
+            const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#96ceb4', '#ffeaa7', '#dda0dd'];
+
+            for (let i = 0; i < 50; i++) {
+                setTimeout(() => {
+                    const confetti = document.createElement('div');
+                    confetti.style.position = 'fixed';
+                    confetti.style.left = Math.random() * 100 + 'vw';
+                    confetti.style.top = '-10px';
+                    confetti.style.width = '10px';
+                    confetti.style.height = '10px';
+                    confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                    confetti.style.borderRadius = Math.random() > 0.5 ? '50%' : '0';
+                    confetti.classList.add('confetti');
+
+                    container.appendChild(confetti);
+
+                    setTimeout(() => {
+                        if (confetti.parentNode) {
+                            confetti.parentNode.removeChild(confetti);
+                        }
+                    }, 3000);
+                }, i * 100);
+            }
+        }
+
+        function clearConfetti() {
+            const container = document.getElementById('confettiContainer');
+            container.innerHTML = '';
+        }
+
+        // Event Listeners
+        addButton.addEventListener('click', addParticipant);
+        nameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addParticipant();
+        });
+        startButton.addEventListener('click', startGame);
+        resetButton.addEventListener('click', resetGame);
+        if (randomButton) {
+            randomButton.addEventListener('click', () => addRandomParticipants(5));
+        }
+        if (watchModeButton) {
+            watchModeButton.addEventListener('click', startWatchMode);
+        }
+        if (menuButton) {
+            menuButton.addEventListener('click', exitWatchMode);
+        }
+        playAgainButton.addEventListener('click', () => {
+            hideWinner();
+            startGame();
+        });
+        newGameButton.addEventListener('click', () => {
+            hideWinner();
+            resetGame();
+        });
+
+        // Make removeParticipant globally available
+        window.removeParticipant = removeParticipant;
+
+        function startAnimationLoop() {
+            if (gameState.animationId) return;
+            gameState.lastFrameTime = performance.now();
+            gameState.animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // Initialize
+        generateLayout();
+        render();
+        startAnimationLoop();
+
+        // Show entry modal on start
+        entryModal.classList.remove('hidden');
+    </script>
+</body>
+
+</html>
